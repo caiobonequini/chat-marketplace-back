@@ -1,0 +1,165 @@
+# Chat Marketplace Backend - Cursor Rules
+
+## Contexto do Projeto
+
+Backend Python 3.13 com WebSocket para chat em tempo real com integração ao Dialogflow CX. Sistema de voz com streaming bidirecional, VAD (Voice Activity Detection) e suporte a barge-in (interrupção).
+
+## Arquitetura
+
+- **Framework**: FastAPI com WebSocket
+- **Integração**: Google Cloud Dialogflow CX
+- **Áudio**: PCM 16-bit, 24kHz, mono
+- **Protocolo**: WebSocket para streaming bidirecional
+- **VAD**: Opcional (webrtcvad), funciona sem ele
+
+## Estrutura de Diretórios
+
+```
+.
+├── main.py                 # Aplicação FastAPI principal
+├── config.py              # Configurações (Pydantic Settings)
+├── websocket_handler.py   # Handler WebSocket e gerenciamento de sessões
+├── dialogflow_service.py  # Integração Dialogflow CX
+├── vad_service.py         # Voice Activity Detection (opcional)
+├── audio_processor.py     # Processamento de áudio
+├── tools/                 # Ferramentas/APIs
+│   └── products.py        # Busca de produtos
+├── models/                # Modelos Pydantic
+│   └── messages.py        # Modelos de mensagens WebSocket
+└── utils/                 # Utilitários
+    └── logger.py          # Logging estruturado
+```
+
+## Padrões de Código
+
+### Imports
+- Sempre use imports absolutos
+- Agrupe imports: stdlib, third-party, local
+- Use `from typing import` para type hints
+
+### Logging
+- Use `get_logger(__name__)` de `utils.logger`
+- Níveis: DEBUG (desenvolvimento), INFO (operacional), WARNING (avisos), ERROR (erros)
+- Logs estruturados em JSON em produção
+
+### Tratamento de Erros
+- Sempre capture exceções específicas
+- Use `try/except` com mensagens de log claras
+- Envie mensagens de erro via WebSocket quando apropriado
+
+### Type Hints
+- Sempre use type hints em funções e métodos
+- Use `Optional[T]` para valores que podem ser None
+- Use `AsyncIterator` para generators assíncronos
+
+### Async/Await
+- Use `async def` para funções assíncronas
+- Use `await` para operações I/O
+- Use `asyncio.create_task()` para tarefas concorrentes
+- Use `asyncio.Event()` para sincronização
+
+## Mensagens WebSocket
+
+### Cliente → Servidor
+- `audio_chunk`: `{"type": "audio_chunk", "session_id": "...", "data": {"audio": "base64..."}}`
+- `start_speaking`: `{"type": "start_speaking", "session_id": "..."}`
+- `stop_speaking`: `{"type": "stop_speaking", "session_id": "..."}`
+- `barge_in`: `{"type": "barge_in", "session_id": "..."}`
+
+### Servidor → Cliente
+- `session_start`: Confirmação de conexão
+- `audio_response`: Chunk de áudio da resposta
+- `transcription`: Texto transcrito
+- `intent`: Intenção detectada
+- `tool_call`: Chamada de ferramenta
+- `error`: Mensagem de erro
+
+## Configuração
+
+Variáveis de ambiente obrigatórias:
+- `GOOGLE_CLOUD_PROJECT_ID`
+- `DIALOGFLOW_AGENT_ID`
+- `DIALOGFLOW_LOCATION`
+- `GOOGLE_APPLICATION_CREDENTIALS` (caminho para JSON)
+
+Variáveis opcionais:
+- `HOST`, `PORT`, `DEBUG`
+- `SAMPLE_RATE` (padrão: 16000 Hz - LINEAR16 para Vertex AI)
+- `CHANNELS`, `CHUNK_SIZE`
+- `VAD_AGGRESSIVENESS`
+- `DIALOGFLOW_LANGUAGE_CODE`
+
+## Dialogflow CX / Vertex AI
+
+- Usa `google-cloud-dialogflow-cx>=1.41.1`
+- Streaming de áudio via `streaming_detect_intent`
+- Integração com Vertex AI endpoints para Speech-to-Text e Text-to-Speech
+- Configuração de áudio: LINEAR16 @ 16000 Hz (otimizado para Vertex AI)
+- Suporta chamadas de ferramentas (tools) via payload
+- Sessões são gerenciadas por UUID
+
+## VAD (Voice Activity Detection)
+
+- Opcional: `webrtcvad` (requer C++ Build Tools no Windows)
+- Se não disponível, assume sempre há fala
+- Frontend deve enviar `start_speaking`/`stop_speaking`
+- Suporta sample rates: 8000, 16000, 32000, 48000 Hz
+
+## Barge-in
+
+- Implementado via `asyncio.Event()` (barge_in_flag)
+- Cancela stream atual quando usuário interrompe
+- Limpa buffer de áudio ao ativar
+- Permite interrupção natural da conversa
+
+## Ferramentas (Tools)
+
+- Localizadas em `tools/`
+- Exemplo: `ProductsTool` para buscar produtos
+- Integração com Dialogflow via payload
+- Chamadas assíncronas com `aiohttp`
+
+## Testes
+
+- Endpoint `/test` para página HTML de teste
+- Endpoint `/health` para health check
+- Script `test_websocket.py` para testes automatizados
+
+## Docker
+
+- Dockerfile multi-stage para produção
+- docker-compose.yml para desenvolvimento
+- Variáveis de ambiente via .env
+
+## Boas Práticas
+
+1. **Sessões**: Cada conexão WebSocket cria uma sessão única
+2. **Cleanup**: Sempre limpe recursos ao desconectar
+3. **Erros**: Sempre logue e notifique cliente via WebSocket
+4. **Áudio**: Use base64 para transmissão, bytes para processamento
+5. **Async**: Não bloqueie o event loop com operações síncronas
+6. **Logging**: Use logs estruturados para produção
+7. **Type Safety**: Use Pydantic para validação de dados
+
+## Comandos Úteis
+
+```bash
+# Desenvolvimento
+python run.py
+uvicorn main:app --reload
+
+# Produção
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+
+# Docker
+docker-compose up --build
+```
+
+## Notas Importantes
+
+- WebSocket não funciona via HTTP GET (use cliente WebSocket)
+- VAD é opcional mas recomendado para melhor UX
+- Dialogflow CX requer credenciais Google Cloud válidas
+- Sample rate padrão: 24000 Hz (VAD usa 16000 como fallback)
+- Buffer de áudio limitado a 100 chunks (deque maxlen=100)
+

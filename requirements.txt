@@ -1,0 +1,16 @@
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+websockets==13.1
+google-cloud-dialogflow-cx>=1.41.1
+google-cloud-texttospeech>=2.16.0
+google-auth==2.35.0
+google-auth-oauthlib==1.2.1
+pydantic==2.9.2
+pydantic-settings==2.5.2
+python-multipart==0.0.12
+numpy==2.1.1
+# webrtcvad==2.0.10  # Opcional - requer Microsoft Visual C++ Build Tools no Windows
+aiohttp==3.11.3
+python-dotenv==1.0.1
+structlog==24.4.0
+

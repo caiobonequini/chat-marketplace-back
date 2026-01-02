@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_CLOUD_PROJECT_ID=${GOOGLE_CLOUD_PROJECT_ID}
+      - DIALOGFLOW_AGENT_ID=${DIALOGFLOW_AGENT_ID}
+      - DIALOGFLOW_LOCATION=${DIALOGFLOW_LOCATION}
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=true
+    volumes:
+      - ./credentials:/app/credentials:ro
+    restart: unless-stopped
+
