@@ -12,8 +12,11 @@ class MessageType(str, Enum):
     STOP_SPEAKING = "stop_speaking"
     END_OF_SPEECH = "end_of_speech"  # Alias para stop_speaking
     BARGE_IN = "barge_in"
+    TEXT_MESSAGE = "text_message"  # Mensagem de texto do usuário
+    TEST_STT = "test_stt"  # Teste apenas STT (sem Dialogflow)
     AUDIO_RESPONSE = "audio_response"
-    TRANSCRIPTION = "transcription"
+    TRANSCRIPTION = "transcription"  # Transcrição do que o usuário falou
+    BOT_RESPONSE = "bot_response"  # Resposta textual do bot
     INTENT = "intent"
     TOOL_CALL = "tool_call"
     TOOL_RESPONSE = "tool_response"
@@ -93,8 +96,14 @@ class AudioResponseMessage(ServerMessage):
 
 
 class TranscriptionMessage(ServerMessage):
-    """Mensagem com transcrição."""
+    """Mensagem com transcrição do que o usuário falou."""
     type: Literal[MessageType.TRANSCRIPTION] = MessageType.TRANSCRIPTION
+    data: Dict[str, str]  # Deve conter 'text': string
+
+
+class BotResponseMessage(ServerMessage):
+    """Mensagem com resposta textual do bot."""
+    type: Literal[MessageType.BOT_RESPONSE] = MessageType.BOT_RESPONSE
     data: Dict[str, str]  # Deve conter 'text': string
 
 

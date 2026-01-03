@@ -12,6 +12,7 @@ from google.cloud.dialogflowcx_v3beta1 import (
 )
 from google.cloud.dialogflowcx_v3beta1.types import audio_config
 from google.cloud.dialogflowcx_v3beta1.types import session
+from google.cloud.dialogflowcx_v3beta1.types.session import TextInput
 from google.api_core import exceptions as gcp_exceptions
 from config import settings
 from utils.logger import get_logger
@@ -243,18 +244,88 @@ class DialogflowService:
                 yield {'error': 'Nenhuma resposta recebida do Dialogflow'}
                 return
             
+            # Variável para armazenar transcrição do usuário (pode vir em resposta intermediária)
+            user_transcription_found = None
+            
             for response in responses:
                 result = {}
+                
+                # DEBUG: Logar estrutura completa da resposta
+                logger.debug(f"Tipo de resposta: {type(response)}")
+                logger.debug(f"Atributos da resposta: {[attr for attr in dir(response) if not attr.startswith('_')]}")
+                
+                # Verificar se há transcrição em respostas intermediárias
+                # No Dialogflow CX, a transcrição pode vir em uma resposta antes do detect_intent_response
+                if hasattr(response, 'recognition_result') and response.recognition_result:
+                    logger.debug(f"recognition_result encontrado: {response.recognition_result}")
+                    if hasattr(response.recognition_result, 'transcript'):
+                        user_transcription_found = response.recognition_result.transcript
+                        logger.info(f"✅ Transcrição encontrada em recognition_result: {user_transcription_found}")
+                
+                # Verificar outros campos possíveis
+                if hasattr(response, 'recognition_result'):
+                    logger.debug(f"recognition_result existe: {response.recognition_result}")
+                if hasattr(response, 'query_result'):
+                    logger.debug(f"query_result existe diretamente na resposta")
                 
                 # Detectar intenção
                 if response.detect_intent_response:
                     detect_response = response.detect_intent_response
                     
-                    # Texto de resposta
+                    # DEBUG: Logar estrutura completa do query_result para entender o que está disponível
+                    logger.debug(f"QueryResult disponível: {dir(detect_response.query_result)}")
+                    if hasattr(detect_response.query_result, 'query_text'):
+                        logger.debug(f"query_text existe: {detect_response.query_result.query_text}")
+                    if hasattr(detect_response.query_result, 'transcript'):
+                        logger.debug(f"transcript existe: {detect_response.query_result.transcript}")
+                    if hasattr(detect_response.query_result, 'input_text'):
+                        logger.debug(f"input_text existe: {detect_response.query_result.input_text}")
+                    
+                    # TRANSCRIÇÃO DO USUÁRIO (query_text) - o que o usuário realmente falou
+                    # Dialogflow CX retorna a transcrição do usuário em query_result.query_text
+                    # ou em query_result.transcript (dependendo da versão)
+                    user_transcription = None
+                    if hasattr(detect_response.query_result, 'query_text') and detect_response.query_result.query_text:
+                        user_transcription = detect_response.query_result.query_text
+                        logger.info(f"Transcrição do usuário capturada via query_text: {user_transcription}")
+                    elif hasattr(detect_response.query_result, 'transcript') and detect_response.query_result.transcript:
+                        user_transcription = detect_response.query_result.transcript
+                        logger.info(f"Transcrição do usuário capturada via transcript: {user_transcription}")
+                    elif hasattr(detect_response.query_result, 'input_text') and detect_response.query_result.input_text:
+                        user_transcription = detect_response.query_result.input_text
+                        logger.info(f"Transcrição do usuário capturada via input_text: {user_transcription}")
+                    else:
+                        # Tentar acessar diretamente os atributos disponíveis
+                        logger.warning(f"Nenhum campo de transcrição encontrado. Atributos disponíveis: {[attr for attr in dir(detect_response.query_result) if not attr.startswith('_')]}")
+                        # Para streaming, a transcrição pode vir em uma resposta intermediária
+                        # Vamos tentar pegar de qualquer lugar possível
+                        try:
+                            # Verificar se há um campo 'text' ou similar
+                            if hasattr(detect_response.query_result, 'text'):
+                                user_transcription = detect_response.query_result.text
+                                logger.info(f"Transcrição do usuário capturada via text: {user_transcription}")
+                        except Exception as e:
+                            logger.debug(f"Erro ao tentar acessar campo text: {e}")
+                    
+                    # Usar transcrição encontrada em recognition_result se disponível
+                    if user_transcription_found:
+                        result['user_transcription'] = user_transcription_found
+                        logger.info(f"✅ Transcrição do usuário (de recognition_result): {user_transcription_found}")
+                    elif user_transcription:
+                        result['user_transcription'] = user_transcription
+                        logger.info(f"✅ Transcrição do usuário (de query_result): {user_transcription}")
+                    else:
+                        logger.warning("⚠️ Nenhuma transcrição do usuário foi encontrada na resposta do Dialogflow")
+                        # FALLBACK TEMPORÁRIO: Se não houver transcrição, usar placeholder
+                        # Isso mantém o diálogo funcionando enquanto investigamos o problema
+                        result['user_transcription'] = "[Transcrição não disponível]"
+                        logger.warning("⚠️ Usando placeholder para transcrição - investigar estrutura do Dialogflow")
+                    
+                    # RESPOSTA DO BOT (response_messages) - o que o bot respondeu
                     if detect_response.query_result.response_messages:
                         for message in detect_response.query_result.response_messages:
                             if message.text:
-                                result['text'] = message.text.text[0]
+                                result['text'] = message.text.text[0]  # Resposta do bot
                     
                     # Intenção detectada
                     if detect_response.query_result.intent:
@@ -305,7 +376,9 @@ class DialogflowService:
         
         session_path = self._get_session_path(session_id)
         
-        query_input = QueryInput(text=text, language_code=self.language_code)
+        # Criar TextInput com o texto
+        text_input = TextInput(text=text)
+        query_input = QueryInput(text=text_input, language_code=self.language_code)
         
         request = DetectIntentRequest(
             session=session_path,

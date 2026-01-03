@@ -137,4 +137,43 @@ class AudioProcessor:
         except Exception as e:
             logger.error(f"Erro ao normalizar áudio: {e}")
             return audio_array
+    
+    @staticmethod
+    def pcm_to_wav(pcm_bytes: bytes, sample_rate: int = 16000, channels: int = 1, bits_per_sample: int = 16) -> bytes:
+        """
+        Converte áudio PCM para formato WAV com header.
+        
+        Args:
+            pcm_bytes: Dados PCM em bytes
+            sample_rate: Taxa de amostragem (padrão: 16000 Hz)
+            channels: Número de canais (padrão: 1 = mono)
+            bits_per_sample: Bits por amostra (padrão: 16)
+            
+        Returns:
+            Bytes do arquivo WAV completo
+        """
+        import struct
+        
+        # Calcular tamanhos
+        data_size = len(pcm_bytes)
+        file_size = 36 + data_size  # 36 = tamanho do header WAV
+        
+        # Criar header WAV
+        wav_header = struct.pack('<4sI4s4sIHHIIHH4sI',
+            b'RIFF',                    # ChunkID
+            file_size,                  # ChunkSize
+            b'WAVE',                    # Format
+            b'fmt ',                    # Subchunk1ID
+            16,                         # Subchunk1Size (16 para PCM)
+            1,                          # AudioFormat (1 = PCM)
+            channels,                   # NumChannels
+            sample_rate,                # SampleRate
+            sample_rate * channels * bits_per_sample // 8,  # ByteRate
+            channels * bits_per_sample // 8,  # BlockAlign
+            bits_per_sample,            # BitsPerSample
+            b'data',                    # Subchunk2ID
+            data_size                   # Subchunk2Size
+        )
+        
+        return wav_header + pcm_bytes
 
